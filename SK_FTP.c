@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
 #include <pthread.h>
 
 #define QSIZE 5
@@ -13,20 +14,40 @@
 char *protocol = "tcp";
 ushort service_port = 4000;
 
-char *response="Hello, this is diagnostic service\n";
 
 pthread_t main_thread;
 
+void send_file(char* file_name,void* arg)
+{
+FILE *fp;
+fp = fopen("test.txt", "rb"); 
+  if(NULL == fp)
+  {
+  printf("Error opening file");
+  exit(EXIT_FAILURE);
+  } 
+while(1)
+{
+unsigned char buff[256]={0};
+int nread = fread(buff,1,256,fp);    
+
+if(nread > 0)
+{                           
+write((int) arg, buff, nread);
+}
+
+if (nread < 256)
+{
+  break;
+}
+}
+close(fp);
+}
+
 void* function(void* arg)
 {
-  int ile;
-  char buffer[10000];
-while(buffer[0]!='.')
-  {
-  ile=read((int) arg,buffer,10000);
-  write((int) arg,buffer,ile); 
-  }
- close((int) arg);
+  send_file("test.txt",arg);
+  close((int) arg);
 }
 
 void* main_loop(void* arg)
@@ -76,15 +97,12 @@ while(1){
 }
 int main(int argc,char *argv[])
 {
- char cmd[100]="ls -al";
-  int a;
-/*if(pthread_create (&main_thread,NULL,main_loop,NULL) !=0){
+if(pthread_create (&main_thread,NULL,main_loop,NULL) !=0){
    printf("Thread creation error\n");
    exit(EXIT_FAILURE);
   }
 printf("Server runing...\n");
 printf("Press <ENTER> to terminate\n");
-getc(stdin);*/
-system(cmd);
+getc(stdin);
 exit(EXIT_SUCCESS);
 }
