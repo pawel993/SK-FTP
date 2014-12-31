@@ -20,7 +20,7 @@ pthread_t main_thread;
 void send_file(char* file_name,void* arg)
 {
 FILE *fp;
-fp = fopen("test.txt", "rb"); 
+fp = fopen(file_name, "rb"); 
   if(NULL == fp)
   {
   printf("Error opening file");
@@ -46,7 +46,7 @@ close(fp);
 
 void* function(void* arg)
 {
-  send_file("test.txt",arg);
+  send_file("samolot20.jpg",arg);
   close((int) arg);
 }
 
