@@ -11,13 +11,55 @@
 
 #define QSIZE 5
 #define BUFSIZE 10000
-char *protocol = "tcp";
-ushort service_port = 4000;
 
+char* r_220="220 Service ready for new user.\n";
+char* r_215="215 Unix sytem type.\n";
+char* r_331="331 User name okay, need11 password.\n";
+char* r_230="230 User logged in, proceed.\n";
+char* r_200="200 Command okay.\n";
+char* r_500="500 Syntax error, command unrecognized.\n";
+
+char *protocol = "tcp";
+
+ushort service_port = 21;
+ushort data_port = 20;
 
 pthread_t main_thread;
 
-void send_file(char* file_name,void* arg)
+void serv_command(void* arg)
+{
+char command_buf[256];  
+read((int) arg,command_buf,256);
+strcat(command_buf," > res.txt");
+printf("%s\n",command_buf);
+system(command_buf);
+FILE *fp;
+fp = fopen("res.txt", "r"); 
+  if(NULL == fp)
+  {
+  printf("Error opening file");
+  exit(EXIT_FAILURE);
+  } 
+while(1)
+{
+unsigned char buff[256]={0};
+int nread = fread(buff,1,256,fp);    
+
+if(nread > 0)
+{                           
+write((int) arg, buff, nread);
+}
+if(nread <256)break;
+}
+close((int)fp);
+}
+
+void respond(void* arg)
+{
+// Tu niedlugo pojawi sie kod odpowiadajacy na komendy klienta
+}
+
+void send_file(char* file_name,int arg)
 {
 FILE *fp;
 fp = fopen(file_name, "rb"); 
@@ -41,17 +83,23 @@ if (nread < 256)
   break;
 }
 }
-close(fp);
+close((int)fp);
 }
 
 void* function(void* arg)
 {
-  send_file("samolot20.jpg",arg);
-  close((int) arg);
+printf("Connection established..\n");
+write((int) arg,r_220,strlen(r_220));
+while(1)
+{
+respond(arg);
+}
+close((int) arg);
 }
 
 void* main_loop(void* arg)
 {
+
   struct sockaddr_in server_addr,client_addr;
   
   int sck,rcv_sck,rcv_len;
@@ -89,11 +137,7 @@ while(1){
   } 
   
 }
-  
-
-  
- 
-  close(sck);
+close(sck);
 }
 int main(int argc,char *argv[])
 {
