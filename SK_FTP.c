@@ -14,10 +14,13 @@
 
 char* r_220="220 Service ready for new user.\n";
 char* r_215="215 Unix sytem type.\n";
-char* r_331="331 User name okay, need11 password.\n";
+char* r_331="331 User name okay, need password.\n";
 char* r_230="230 User logged in, proceed.\n";
 char* r_200="200 Command okay.\n";
 char* r_500="500 Syntax error, command unrecognized.\n";
+char* r_257="257 /usr/Xanril/ directory.\n";
+char* r_227="227 Entering Passive Mode (h1,h2,h3,h4,p1,p2).\n";
+char* r_502="502 Command not implemented.\n";
 
 char *protocol = "tcp";
 
@@ -54,9 +57,25 @@ if(nread <256)break;
 close((int)fp);
 }
 
-void respond(void* arg)
+int respond(void* arg)
 {
-// Tu niedlugo pojawi sie kod odpowiadajacy na komendy klienta
+char buffer[256]=" ";
+char* command;
+char* atribut;
+int status=0;
+read((int) arg,buffer,256);
+command=strtok(buffer," ");
+atribut=strtok(NULL," ");
+if(strcmp(command,"USER")!=0 && strcmp(command,"PORT")!=0){command[strlen(command)-2]='\0';printf("%s",command);}
+if(strcmp(command,"USER")==0){write((int) arg,r_230,strlen(r_230));printf("%s Response 230\n",command);}
+else if(strcmp(command,"PORT")==0){write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);}
+else if(strcmp(command,"SYST")==0){write((int) arg,r_215,strlen(r_215));printf(" Respons 215\n");}
+else if(strcmp(command,"PWD")==0){write((int) arg,r_257,strlen(r_257));printf(" Respons 257\n");}
+else if(strcmp(command,"PASV")==0){write((int) arg,r_227,strlen(r_227));printf(" Respons 227\n");}
+else if(strcmp(command,"QUIT")==0){status=1;printf(" Respons quit\n");}
+else if(strcmp(command,"LIST")==0){write((int) arg,r_502,strlen(r_502));printf(" Respons 502\n");}
+else {write((int) arg,r_500,strlen(r_500));printf(" Response 500\n");}
+return status;
 }
 
 void send_file(char* file_name,int arg)
@@ -88,11 +107,12 @@ close((int)fp);
 
 void* function(void* arg)
 {
+int stat=0;
 printf("Connection established..\n");
 write((int) arg,r_220,strlen(r_220));
-while(1)
+while(stat!=1)
 {
-respond(arg);
+stat=respond(arg);
 }
 close((int) arg);
 }
