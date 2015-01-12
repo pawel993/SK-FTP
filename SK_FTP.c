@@ -8,9 +8,12 @@
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
+#include <math.h>
 
 #define QSIZE 5
 #define BUFSIZE 10000
+
 char* current_dir;
 char* mode="ACTIVE";
 char* r_220="220 Service ready for new user.\n";
@@ -27,14 +30,23 @@ char* r_125="125 Data connection already open; transfer starting.\n";
 char* r_226="226 Closing data connection.\n";
 
 char *protocol = "tcp";
-
+int dd[2];
+ushort passive_p;
 ushort service_port = 21;
-ushort passive_port = 1045;
 ushort data_port = 20;
 
 pthread_t main_thread;
 
-
+static void capture(int signo){
+  printf("Signal captured\n");
+  exit(EXIT_SUCCESS);
+}
+ushort passive_port()
+{
+passive_p++;
+printf("Passive connection request.Prepering connection at port:%d\n",passive_p);
+return passive_p;
+}
 
 void create_dir(char* directory_name)
 {
@@ -45,25 +57,20 @@ void create_dir(char* directory_name)
  system(cmd);
 }
 
-void ls(void* arg)
+void ls(int arg)
 {
-system("ls -l > res.txt");
-FILE* fp;
-fp = fopen("res.txt", "rb"); 
-  if(NULL == fp)
-  {
-  printf("Error opening file");
-  exit(EXIT_FAILURE);
-  } 
-if(strcmp(mode,"PASSIVE")==0)
+char tab[20]="lalalalala\n";
+write((int)arg,tab,strlen(tab));
+}
+
+void passive_connection()
 {
-  printf(" PASSIVE MODE LS\n");
   struct sockaddr_in serv_data,client_data;
   int data_sck,cli_data,cli_len;
   bzero(&serv_data, sizeof serv_data);
   serv_data.sin_addr.s_addr = INADDR_ANY;
   serv_data.sin_family= AF_INET;
-  serv_data.sin_port = htons(passive_port);
+  serv_data.sin_port = htons(passive_port());
   
   if ((data_sck = socket (PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
     perror("Cannot open socket");
@@ -72,70 +79,85 @@ if(strcmp(mode,"PASSIVE")==0)
  
  
   if (bind(data_sck,(struct sockaddr*)&serv_data, sizeof serv_data) <0){
-    printf("Cannot bind socket %d to %d port\n",data_sck,passive_port);
-    exit(EXIT_FAILURE);
+  printf("Cannot bind socket %d to %d port\n",data_sck,passive_port);
+  exit(EXIT_FAILURE);
   }
-  write((int) arg,r_150,strlen(r_150));printf(" Respons 150\n");
   
   if (listen (data_sck,QSIZE)<0){
     perror("Cannot listen");
     exit(EXIT_FAILURE);
   }
-  
-  
   printf("Waiting...\n");
-  
+
   cli_len = sizeof (struct sockaddr_in);
   if ((cli_data = accept(data_sck,(struct sockaddr*) &client_data, (socklen_t*) &cli_len)) < 0){
     perror("Error while connecting with client");
     exit(EXIT_FAILURE);
   }  
+    dd[0]=data_sck;
+    dd[1]=cli_data;
     printf("Data connection established\n");
-  while(1)
-  {
-  unsigned char buff[256]={0};
-  int nread = fread(buff,8,256,fp);    
-  if(nread > 0)
-  {        
-  printf("%s\n",buff);
-  write(cli_data, buff, nread);	
-  }
-  if(nread <256)break;
-  }
-  close((int)fp);
-  write((int) arg,r_226,strlen(r_226));
-  close(data_sck);
-  close(cli_data);
-  }
-else
-{
-}
 }
 
-void addr(char* addres)
+void active_connection(char* address,char* port)
 {
-char temp[48];
-char* port;
-int i=0;
+
+}
+int power(int a, int b)
+{
+  int temp=1;
+  int i;
+for(i=0;i<b;i++){
+temp*=2;
+}
+return temp;
+}
+
+int num_to_port(int a,int b)
+{
+int c,k;
+for(c=8;c>=0;c--)
+{
+k=a>>c;
+if(k&1){;b+=power(2,c+8);}
+}
+return b;
+}
+
+char* port_to_num(int a)
+{
+
+  
+}
+
+void addr(char* addr)
+{
+int i;
 int count=0;
-int count2=0;
-strncpy(temp,addres,48);
-for(i=0;i<strlen(addres)-1;i++)
-{
-if(temp[i]==44)
-{
-count++;
-temp[i]=46;
+char addres[256];
+int p1;
+char temp[50];
+char* add;
+char* port;
+char* port2;
+strncpy(addres,addr,strlen(addr));
+printf("%s %d\n",addr,strlen(addr));
+for(i=0;i<strlen(addres);i++){
+
+if(addres[i]==','){count++;}
+if(count<4 && addres[i]==','){addres[i]='.';}
 }
-if(count<4){count2++;}
-}
-char ad[count2];
-strncpy(ad,temp,count2);
-printf("%s   ||\n",ad);
+printf("%s\n",addres);
+add=strtok(addres,",");
+port=strtok(NULL,",");
+port2=strtok(NULL,",");	
+printf("%s %s %s\n",add,port,port2);
+port_calc(atoi(port),atoi(port2));
 }
 
 int respond(void* arg)
 {
+char** temp;
 char buffer[256]=" ";
 char* command;
 char* atribut;
@@ -144,27 +166,51 @@ read((int) arg,buffer,256);
 printf("%s",buffer);
 command=strtok(buffer," ");
 atribut=strtok(NULL," ");
+
 if(strcmp(command,"USER")!=0 && strcmp(command,"PORT")!=0 && strcmp(command,"MKD")!=0 && strcmp(command,"TYPE")!=0 )
-{command[strlen(command)-2]='\0';printf("%s",command);}
+{
+command[strlen(command)-2]='\0';printf("%s",command);
+}
+
 if(strcmp(command,"USER")==0)
-{write((int) arg,r_230,strlen(r_230));printf("%s Response 230\n",command);}
+{
+write((int) arg,r_230,strlen(r_230));printf("%s Response 230\n",command);}
+
 else if(strcmp(command,"MKD")==0)
-{atribut[strlen(atribut)-2]='\0';create_dir(atribut);write((int) arg,r_257,strlen(r_257));printf("%s %s Response 257\n",command,atribut);}
+{
+atribut[strlen(atribut)-2]='\0';create_dir(atribut);write((int) arg,r_257,strlen(r_257));printf("%s %s Response 257\n",command,atribut);}
+
 else if(strcmp(command,"PORT")==0)
-{atribut[strlen(atribut)-2]='\0';write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);addr(atribut);}
+{
+atribut[strlen(atribut)-2]='\0';addr(atribut);write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);}
+
 else if(strcmp(command,"SYST")==0)
-{write((int) arg,r_215,strlen(r_215));printf(" Respons 215\n");}
+{
+write((int) arg,r_215,strlen(r_215));printf(" Respons 215\n");}
+
 else if(strcmp(command,"PWD")==0)
-{write((int) arg,r_257,strlen(r_257));printf(" Respons 257\n");}
+{
+write((int) arg,r_257,strlen(r_257));printf(" Respons 257\n");}
+
 else if(strcmp(command,"PASV")==0)
-{write((int) arg,r_227,strlen(r_227));printf(" Respons 227\n");mode="PASSIVE";ls(arg);}
+{
+write((int) arg,r_227,strlen(r_227));printf(" Respons 227\n");passive_connection();}
+
 else if(strcmp(command,"QUIT")==0)
-{status=1;printf(" Respons quit\n");}
+{
+status=1;printf(" Respons quit\n");}
+
 else if(strcmp(command,"LIST")==0)
-{ls(arg);}
+{
+write((int) arg,r_150,strlen(r_150));printf(" Respons 150\n");ls(dd[1]);
+write((int)arg,r_226,strlen(r_226));close(dd[0]);close(dd[1]);}
+
 else if(strcmp(command,"TYPE")==0)
-{write((int) arg,r_200,strlen(r_200)),printf(" Respons 200\n");}
+{
+write((int) arg,r_200,strlen(r_200)),printf("%s Respons 200\n",command);}
+
 else {write((int) arg,r_500,strlen(r_500));printf(" Response 500\n");}
+
 return status;
 }
 
@@ -249,8 +295,14 @@ while(1){
 }
 close(sck);
 }
+
 int main(int argc,char *argv[])
 {
+  passive_p=1024;
+  passive_port();
+  passive_port();
+  addr("12,352,333,21,4,21");
+  signal(SIGINT,capture);
 if(pthread_create (&main_thread,NULL,main_loop,NULL) !=0){
    printf("Thread creation error\n");
    exit(EXIT_FAILURE);
