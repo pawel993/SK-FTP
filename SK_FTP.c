@@ -31,85 +31,73 @@ ushort passive_p;
 ushort service_port = 21;
 ushort data_port = 20;
 pthread_t main_thread;
-static void capture(int signo){
-printf("Signal captured\n");
-exit(EXIT_SUCCESS);
-}
-ushort passive_port()
-{
-passive_p++;
-return passive_p;
-}
-void pwd(char path[256])
-{
-getcwd(path,256);
-}
 
-void create_dir(char* directory_name,void* arg)
-{
-char cmd[50];
-sprintf(cmd,"mkdir %s",directory_name);
-char r_257[256];
-char temp[256];
-pwd(temp);
-system(cmd);
-sprintf(r_257,"257 %s/%s created.\n",temp,directory_name);
-write((int) arg,r_257,strlen(r_257));
-}
+//#################################################
+// Przesylanie danych
+//#################################################
 
-void ls(int arg)
+void send_file(char* file_name,void* arg,char* mode)
 {
-system("ls -l > res.txt");
 FILE *fp;
-char wiersz[256];
-fp = fopen("res.txt", "rb");
+fp = fopen(file_name, "rb");
 if(NULL == fp)
 {
 printf("Error opening file");
 exit(EXIT_FAILURE);
 }
-while (fgets(wiersz, 256, fp) != NULL)
+while(1)
 {
-write(arg,wiersz,strlen(wiersz));
+unsigned char buff[256]={0};
+int nread = fread(buff,1,256,fp);
+if(nread > 0)
+{
+write((int) arg, buff, nread);
 }
-system("rm res.txt");
-fclose(fp);
+if (nread < 256)
+{
+break;
+}
+}
+close((int)fp);
 }
 
-void passive_connection(int port,int dd[2])
+void recive_file(char* file_name,int arg,char* mode)
 {
-struct sockaddr_in serv_data,client_data;
-int data_sck,cli_data,cli_len;
-bzero(&serv_data, sizeof serv_data);
-serv_data.sin_addr.s_addr = INADDR_ANY;
-serv_data.sin_family= AF_INET;
-serv_data.sin_port = htons(port);
-if ((data_sck = socket (PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
-perror("Cannot open socket");
+int bytesReceived;
+char recvBuff[256];
+FILE *fp;
+fp = fopen(file_name, mode);
+if(NULL == fp)
+{
+printf("Error opening file");
 exit(EXIT_FAILURE);
 }
-if (bind(data_sck,(struct sockaddr*)&serv_data, sizeof serv_data) <0){
-printf("Cannot bind socket %d to %d port\n",data_sck,port);
-exit(EXIT_FAILURE);
+if(strcmp(mode,"wb+")==0)
+{
+
+ while((bytesReceived = read(arg, recvBuff, 256)) > 0)
+    {
+        printf("%s %d\n",recvBuff,bytesReceived);
+        fwrite(recvBuff, 1,bytesReceived,fp);
+    }
 }
-if (listen (data_sck,QSIZE)<0){
-perror("Cannot listen");
-exit(EXIT_FAILURE);
+else
+{
+  while((bytesReceived = read(arg, recvBuff, 256)) > 0)
+    {
+      fputs(recvBuff,fp);
+    }
 }
-printf("Waiting...\n");
-cli_len = sizeof (struct sockaddr_in);
-if ((cli_data = accept(data_sck,(struct sockaddr*) &client_data, (socklen_t*) &cli_len)) < 0){
-perror("Error while connecting with client");
-exit(EXIT_FAILURE);
-}
-dd[0]=data_sck;
-dd[1]=cli_data;
-printf("Data connection established\n");
+close((int)fp);
+
+
 }
 
-void active_connection(char* address,char* port)
-{
-}
+
+//##########################################################
+//Funkcje pomocnicze
+//##########################################################
+
 int power(int a, int b)
 {
 int temp=1;
@@ -168,8 +156,106 @@ port2=strtok(NULL,",");
 printf("%s %s %s\n",add,port,port2);
 num_to_port(atoi(port),atoi(port2));
 }
+
+static void capture(int signo){
+printf("Signal captured\n");
+exit(EXIT_SUCCESS);
+}
+
+ushort passive_port()
+{
+passive_p++;
+return passive_p;
+}
+
+//#########################################################
+//Funkcje serwera
+//#########################################################
+
+void pwd(char path[256])
+{
+getcwd(path,256);
+}
+
+void create_dir(char* directory_name,void* arg)
+{
+char cmd[50];
+sprintf(cmd,"mkdir %s",directory_name);
+char r_257[256];
+char temp[256];
+pwd(temp);
+system(cmd);
+sprintf(r_257,"257 %s/%s created.\n",temp,directory_name);
+write((int) arg,r_257,strlen(r_257));
+}
+
+void ls(int arg)
+{
+system("ls -l > res.txt");
+FILE *fp;
+char wiersz[256];
+fp = fopen("res.txt", "rb");
+if(NULL == fp)
+{
+printf("Error opening file");
+exit(EXIT_FAILURE);
+}
+while (fgets(wiersz, 256, fp) != NULL)
+{
+//write(arg,wiersz,strlen(wiersz));
+  send(arg,(void *)wiersz,strlen(wiersz),0);
+}
+system("rm res.txt");
+fclose(fp);
+}
+
+//############################################################
+//Nawiazywanie lacza danych
+//############################################################
+
+void passive_connection(int port,int dd[2])
+{
+struct sockaddr_in serv_data,client_data;
+int data_sck,cli_data,cli_len;
+bzero(&serv_data, sizeof serv_data);
+serv_data.sin_addr.s_addr = INADDR_ANY;
+serv_data.sin_family= AF_INET;
+serv_data.sin_port = htons(port);
+if ((data_sck = socket (PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
+perror("Cannot open socket");
+exit(EXIT_FAILURE);
+}
+if (bind(data_sck,(struct sockaddr*)&serv_data, sizeof serv_data) <0){
+printf("Cannot bind socket %d to %d port\n",data_sck,port);
+exit(EXIT_FAILURE);
+}
+if (listen (data_sck,QSIZE)<0){
+perror("Cannot listen");
+exit(EXIT_FAILURE);
+}
+printf("Waiting...\n");
+cli_len = sizeof (struct sockaddr_in);
+if ((cli_data = accept(data_sck,(struct sockaddr*) &client_data, (socklen_t*) &cli_len)) < 0){
+perror("Error while connecting with client");
+exit(EXIT_FAILURE);
+}
+dd[0]=data_sck;
+dd[1]=cli_data;
+printf("Data connection established\n");
+}
+
+void active_connection(char* address,char* port)
+{
+}
+
+
+//##################################################
+//Odpowiadanie na zadania klienta
+//##################################################
+
 int respond(void* arg)
 {
+char* mode="ab+";
 int desc[2];
 char buffer[256]=" ";
 char* command;
@@ -179,13 +265,28 @@ read((int) arg,buffer,256);
 printf("%s",buffer);
 command=strtok(buffer," ");
 atribut=strtok(NULL," ");
-if(strcmp(command,"USER")!=0 && strcmp(command,"PORT")!=0 && strcmp(command,"MKD")!=0 && strcmp(command,"TYPE")!=0 )
+if(strcmp(command,"USER")!=0 && strcmp(command,"PORT")!=0 && strcmp(command,"MKD")!=0
+ && strcmp(command,"TYPE")!=0 &&  strcmp(command,"RETR")!=0 &&  strcmp(command,"STOR")!=0 )
 {
 command[strlen(command)-2]='\0';printf("%s",command);
 }
 if(strcmp(command,"USER")==0)
 {
 write((int) arg,r_230,strlen(r_230));printf("%s Response 230\n",command);}
+else if(strcmp(command,"STOR")==0)
+{
+atribut[strlen(atribut)-2]='\0';
+write((int) arg,r_150,strlen(r_150));
+recive_file(atribut,desc[1],mode);
+write((int) arg,r_226,strlen(r_226));
+close(desc[1]);
+close(desc[0]);
+printf("%s Response 226\n",command);
+}
+else if(strcmp(command,"RETR")==0)
+{
+atribut[strlen(atribut)-2]='\0';send_file(atribut,arg,mode);
+}
 else if(strcmp(command,"MKD")==0)
 {
 atribut[strlen(atribut)-2]='\0';create_dir(atribut,arg);printf("%s %s Response 257\n",command,atribut);}
@@ -219,34 +320,17 @@ write((int) arg,r_150,strlen(r_150));printf(" Respons 150\n");ls(desc[1]);
 write((int)arg,r_226,strlen(r_226));close(desc[0]);close(desc[1]);}
 else if(strcmp(command,"TYPE")==0)
 {
+atribut[strlen(atribut)-2]='\0';
+if(strcmp(atribut,"A")==0){mode="wt+";}
+else {mode="wb+";}
 write((int) arg,r_200,strlen(r_200)),printf("%s Respons 200\n",command);}
+
 else {write((int) arg,r_500,strlen(r_500));printf(" Response 500\n");}
 return status;
 }
-void send_file(char* file_name,int arg)
-{
-FILE *fp;
-fp = fopen(file_name, "rb");
-if(NULL == fp)
-{
-printf("Error opening file");
-exit(EXIT_FAILURE);
-}
-while(1)
-{
-unsigned char buff[256]={0};
-int nread = fread(buff,1,256,fp);
-if(nread > 0)
-{
-write((int) arg, buff, nread);
-}
-if (nread < 256)
-{
-break;
-}
-}
-close((int)fp);
-}
+//#########################################
+// Tworzenie watkow i przyjmowanie polaczen
+//#########################################
 void* function(void* arg)
 {
 int stat=0;
