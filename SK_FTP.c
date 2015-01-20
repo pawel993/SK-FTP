@@ -17,6 +17,7 @@ char* current_dir;
 char* mode="ACTIVE";
 char* r_220="220 Service ready for new user.\n";
 char* r_215="215 Unix system type.\n";
+char* r_250="250 Requested file action okay, completed.\r\n";
 char* r_331="331 User name okay, need password.\n";
 char* r_230="230 User logged in, proceed.\n";
 char* r_200="200 Command okay.\n";
@@ -287,8 +288,7 @@ read((int) arg,buffer,256);
 printf("%s",buffer);
 command=strtok(buffer," ");
 atribut=strtok(NULL," ");
-if(strcmp(command,"USER")!=0 && strcmp(command,"PORT")!=0 && strcmp(command,"MKD")!=0
- && strcmp(command,"TYPE")!=0 &&  strcmp(command,"RETR")!=0 &&  strcmp(command,"STOR")!=0 && strcmp(command,"CWD")!=0)
+if(atribut==NULL)
 {
 command[strlen(command)-2]='\0';printf("%s",command);
 }
@@ -305,11 +305,20 @@ for(i=strlen(current_path);i>=0;i--)
 {
 if(current_path[i]=='/'){current_path[i]='\0';break;}
 }
-
-
 }
 else {sprintf(current_path,"%s/%s",current_path,atribut);}
 write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);}
+
+else if(strcmp(command,"RMD")==0)
+{
+atribut[strlen(atribut)-2]='\0';
+char cmd[256];
+sprintf(cmd,"rm -R %s/%s",current_path,atribut);
+system(cmd);
+write((int)arg,r_250,strlen(r_250));
+printf("%s %s Response 250",command,atribut);
+}
+
 else if(strcmp(command,"STOR")==0)
 {
 atribut[strlen(atribut)-2]='\0';
