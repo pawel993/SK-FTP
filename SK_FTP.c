@@ -30,19 +30,23 @@ char *protocol = "tcp";
 
 ushort passive_p;
 ushort service_port = 21;
-ushort data_port = 20;
+
+pthread_mutex_t lock,lock2;
 pthread_t main_thread;
 
 //#################################################
 // Przesylanie danych
 //#################################################
 
-void send_file(char* file_name,int arg,char* mode)
+void send_file(char* file_name,int arg,char* mode,char current_path[256])
 {
 int bytesReceived;
 char recvBuff[256];
+char file[256];
+sprintf(file,"%s/%s",current_path,file_name);
+printf("Reading file:%s\n Mode:%s\n",file,mode);
 FILE *fp;
-fp = fopen(file_name, mode);
+fp = fopen(file, mode);
 if(NULL == fp)
 {
 printf("Error opening file");
@@ -51,9 +55,8 @@ exit(EXIT_FAILURE);
 if(strcmp(mode,"rb+")==0)
 {
 
- while((bytesReceived = fread(recvBuff,1,256,fp))>0)
+ while((bytesReceived = fread(recvBuff,256,1,fp))>0)
     {
-        printf("%s %d\n",recvBuff,bytesReceived);
         write(arg,recvBuff,bytesReceived);
     }
 }
@@ -61,7 +64,7 @@ else
 {
   while(fgets(recvBuff, 256,fp)!=NULL)
     {
-        printf("%s\n",recvBuff);
+      printf("%s",recvBuff);
         write(arg,recvBuff,strlen(recvBuff));
     }
 }
@@ -71,12 +74,15 @@ close((int)fp);
 
 }
 
-void recive_file(char* file_name,int arg,char* mode)
+void recive_file(char* file_name,int arg,char* mode,char current_path[256])
 {
 int bytesReceived;
 char recvBuff[256];
+char file[256];
+sprintf(file,"%s/%s",current_path,file_name);
+printf("Reciving file:%s\nMode:%s\n",file,mode);
 FILE *fp;
-fp = fopen(file_name, mode);
+fp = fopen(file, mode);
 if(NULL == fp)
 {
 printf("Error opening file");
@@ -84,23 +90,21 @@ exit(EXIT_FAILURE);
 }
 if(strcmp(mode,"wb+")==0)
 {
-
+ printf("Binary mode\n");
  while((bytesReceived = read(arg, recvBuff, 256)) > 0)
     {
-        printf("%s %d\n",recvBuff,bytesReceived);
-        fwrite(recvBuff, 1,bytesReceived,fp);
+        fwrite(recvBuff,1,bytesReceived,fp);
     }
 }
 else
 {
+  printf("ASCII mode\n");
   while((bytesReceived = read(arg, recvBuff, 256)) > 0)
     {
-        printf("%s %d\n",recvBuff,bytesReceived);
         fputs(recvBuff,fp);
     }
 }
 close((int)fp);
-
 
 }
 
@@ -196,8 +200,7 @@ exit(EXIT_FAILURE);
 }
 while (fgets(wiersz, 256, fp) != NULL)
 {
-//write(arg,wiersz,strlen(wiersz));
-  send(arg,(void *)wiersz,strlen(wiersz),0);
+write(arg,wiersz,strlen(wiersz));
 }
 system("rm res.txt");
 fclose(fp);
@@ -275,11 +278,8 @@ dd[1]=data_sck;
 //Odpowiadanie na zadania klienta
 //##################################################
 
-int respond(void* arg,char current_path[256])
+int respond(void* arg,char current_path[256],char* mode,char* mode_w,int desc[2])
 {
-char* mode="rb+";
-char* mode_w="wb+";
-int desc[2];
 char buffer[256]=" ";
 char* command;
 char* atribut;
@@ -323,7 +323,7 @@ else if(strcmp(command,"STOR")==0)
 {
 atribut[strlen(atribut)-2]='\0';
 write((int) arg,r_150,strlen(r_150));
-recive_file(atribut,desc[1],mode_w);
+recive_file(atribut,desc[1],mode_w,current_path);
 write((int) arg,r_226,strlen(r_226));
 close(desc[1]);
 close(desc[0]);
@@ -331,13 +331,15 @@ printf("%s Response 226\n",command);
 }
 else if(strcmp(command,"RETR")==0)
 {
+pthread_mutex_lock(&lock2);
 atribut[strlen(atribut)-2]='\0';
 write((int) arg,r_150,strlen(r_150));
-send_file(atribut,desc[1],mode);
+send_file(atribut,desc[1],mode,current_path);
 write((int) arg,r_226,strlen(r_226));
 close(desc[1]);
 close(desc[0]);
 printf("%s Response 226\n",command);
+pthread_mutex_unlock(&lock2);
 }
 else if(strcmp(command,"MKD")==0)
 {
@@ -375,14 +377,17 @@ else if(strcmp(command,"QUIT")==0)
 status=1;printf(" Respons quit\n");}
 else if(strcmp(command,"LIST")==0)
 {
+pthread_mutex_lock(&lock);
 write((int) arg,r_150,strlen(r_150));printf(" Respons 150\n");ls(desc[1],current_path);
-write((int)arg,r_226,strlen(r_226));close(desc[0]);close(desc[1]);}
+write((int)arg,r_226,strlen(r_226));close(desc[0]);close(desc[1]);
+pthread_mutex_unlock(&lock);
+}
 else if(strcmp(command,"TYPE")==0)
 {
 atribut[strlen(atribut)-2]='\0';
 if(strcmp(atribut,"A")==0){mode="rt+";mode_w="wt+";}
 else {mode="rb+";mode_w="wb+";}
-write((int) arg,r_200,strlen(r_200)),printf("%s Respons 200\n",command);}
+write((int) arg,r_200,strlen(r_200)),printf("%s %s %s Respons 200\n",command,mode,mode_w);}
 
 else {write((int) arg,r_500,strlen(r_500));printf(" Response 500\n");}
 return status;
@@ -393,13 +398,17 @@ return status;
 void* function(void* arg)
 {
 int stat=0;
+int desc[2];
+char* mode="rt+";
+char* mode_w="wt+";
 printf("Connection established..\n");
 write((int) arg,r_220,strlen(r_220));
 char current_path[256];
 getcwd(current_path,256);
+sprintf(current_path,"%s/Files",current_path);
 while(stat!=1)
 {
-stat=respond(arg,current_path);
+stat=respond(arg,current_path,mode,mode_w,desc);
 }
 close((int) arg);
 return 0;
@@ -439,8 +448,15 @@ close(sck);
 }
 int main(int argc,char *argv[])
 {
-chdir("Files");
 passive_p=1045;
+if (pthread_mutex_init(&lock, NULL) != 0)
+    {
+        printf("\n mutex init failed\n");
+    }
+if (pthread_mutex_init(&lock2, NULL) != 0)
+    {
+        printf("\n mutex init failed\n");
+    }
 signal(SIGINT,capture);
 if(pthread_create (&main_thread,NULL,main_loop,NULL) !=0){
 printf("Thread creation error\n");
