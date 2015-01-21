@@ -344,7 +344,7 @@ close(desc[1]);
 close(desc[0]);
 printf("%s Response 226\n",command);
 pthread_mutex_unlock(&lock2);
-}
+}x
 else if(strcmp(command,"MKD")==0)
 {
 atribut[strlen(atribut)-2]='\0';
@@ -360,7 +360,7 @@ else if(strcmp(command,"PORT")==0)
 {
 char* address="";
 int port=0;
-atribut[strlen(atribut)-2]='\0';port=addr(atribut,address);active_connection(address,port,desc);write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);}
+atribut[strlen(atribut)-2]='\0';port=addr(atribut,address);active_connection("127.0.0.1",port,desc);write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);}
 
 else if(strcmp(command,"SYST")==0)
 {
