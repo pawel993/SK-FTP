@@ -13,8 +13,7 @@
 
 #define QSIZE 5
 #define BUFSIZE 10000
-char* current_dir;
-char* mode="ACTIVE";
+
 char* r_220="220 Service ready for new user.\n";
 char* r_215="215 Unix system type.\n";
 char* r_250="250 Requested file action okay, completed.\r\n";
@@ -27,6 +26,7 @@ char* r_150="150 File status okay; about to open data connection.\n";
 char* r_125="125 Data connection already open; transfer starting.\n";
 char* r_226="226 Closing data connection.\n";
 char *protocol = "tcp";
+char* server_addres="127.0.0.1";
 
 ushort passive_p;
 ushort service_port = 21;
@@ -44,7 +44,6 @@ int bytesReceived;
 char recvBuff[256];
 char file[256];
 sprintf(file,"%s/%s",current_path,file_name);
-printf("Reading file:%s\n Mode:%s\n",file,mode);
 FILE *fp;
 fp = fopen(file, mode);
 if(NULL == fp)
@@ -55,7 +54,7 @@ exit(EXIT_FAILURE);
 if(strcmp(mode,"rb+")==0)
 {
 
- while((bytesReceived = fread(recvBuff,256,1,fp))>0)
+ while((bytesReceived = fread(recvBuff,1,256,fp))>0)
     {
         write(arg,recvBuff,bytesReceived);
     }
@@ -80,7 +79,6 @@ int bytesReceived;
 char recvBuff[256];
 char file[256];
 sprintf(file,"%s/%s",current_path,file_name);
-printf("Reciving file:%s\nMode:%s\n",file,mode);
 FILE *fp;
 fp = fopen(file, mode);
 if(NULL == fp)
@@ -98,7 +96,6 @@ if(strcmp(mode,"wb+")==0)
 }
 else
 {
-  printf("ASCII mode\n");
   while((bytesReceived = read(arg, recvBuff, 256)) > 0)
     {
         fputs(recvBuff,fp);
@@ -273,17 +270,24 @@ exit(EXIT_FAILURE);}
 dd[1]=data_sck;
 }
 
-
 //##################################################
 //Odpowiadanie na zadania klienta
 //##################################################
 
-int respond(void* arg,char current_path[256],char* mode,char* mode_w,int desc[2])
+void respond(void* arg,char current_path[256])
 {
-char buffer[256]=" ";
+int desc[2];
+char* mode="rb+";
+char* mode_w="wb+";
+char buffer[256]="";
 char* command;
 char* atribut;
 int status=0;
+while(status==0)
+{
+memset(buffer,0,256);
+command=NULL;
+atribut=NULL;
 read((int) arg,buffer,256);
 printf("%s",buffer);
 command=strtok(buffer," ");
@@ -351,30 +355,36 @@ system(cmd);
 sprintf(r_257,"257 %s/%s created.\n",current_path,atribut);
 write((int) arg,r_257,strlen(r_257));
 printf("%s %s Response 257\n",command,atribut);}
+
 else if(strcmp(command,"PORT")==0)
 {
 char* address="";
 int port=0;
-atribut[strlen(atribut)-2]='\0';port=addr(atribut,address);active_connection("127.0.0.1",port,desc);write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);}
+atribut[strlen(atribut)-2]='\0';port=addr(atribut,address);active_connection(address,port,desc);write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);}
+
 else if(strcmp(command,"SYST")==0)
 {
 write((int) arg,r_215,strlen(r_215));printf(" Respons 215\n");}
+
 else if(strcmp(command,"PWD")==0)
 {
 char r_257[256];
 sprintf(r_257,"257 %s current working directory.\n",current_path);
 write((int) arg,r_257,strlen(r_257));printf(" Respons 257\n");}
+
 else if(strcmp(command,"PASV")==0)
 {
 int port=passive_port();
 char ad[256];
-port_to_num("127.0.0.1",port,ad);
+port_to_num(server_addres,port,ad);
 char r_227[256];
 sprintf(r_227,"227 Entering Passive Mode %s",ad);
 write((int) arg,r_227,strlen(r_227));printf(" Respons 227\n");passive_connection(port,desc);}
+
 else if(strcmp(command,"QUIT")==0)
 {
 status=1;printf(" Respons quit\n");}
+
 else if(strcmp(command,"LIST")==0)
 {
 pthread_mutex_lock(&lock);
@@ -382,37 +392,34 @@ write((int) arg,r_150,strlen(r_150));printf(" Respons 150\n");ls(desc[1],current
 write((int)arg,r_226,strlen(r_226));close(desc[0]);close(desc[1]);
 pthread_mutex_unlock(&lock);
 }
+
 else if(strcmp(command,"TYPE")==0)
 {
 atribut[strlen(atribut)-2]='\0';
 if(strcmp(atribut,"A")==0){mode="rt+";mode_w="wt+";}
 else {mode="rb+";mode_w="wb+";}
-write((int) arg,r_200,strlen(r_200)),printf("%s %s %s Respons 200\n",command,mode,mode_w);}
+write((int) arg,r_200,strlen(r_200)),printf("%s Respons 200\n",command);}
 
 else {write((int) arg,r_500,strlen(r_500));printf(" Response 500\n");}
-return status;
+  
+}
 }
 //#########################################
 // Tworzenie watkow i przyjmowanie polaczen
 //#########################################
+
 void* function(void* arg)
 {
-int stat=0;
-int desc[2];
-char* mode="rt+";
-char* mode_w="wt+";
 printf("Connection established..\n");
 write((int) arg,r_220,strlen(r_220));
 char current_path[256];
 getcwd(current_path,256);
 sprintf(current_path,"%s/Files",current_path);
-while(stat!=1)
-{
-stat=respond(arg,current_path,mode,mode_w,desc);
-}
+respond(arg,current_path);
 close((int) arg);
 return 0;
 }
+
 void* main_loop(void* arg)
 {
 struct sockaddr_in server_addr,client_addr;
