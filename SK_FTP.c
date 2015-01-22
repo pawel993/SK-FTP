@@ -10,8 +10,8 @@
 #include <pthread.h>
 #include <signal.h>
 #include <math.h>
-
-#define QSIZE 5
+#include <arpa/inet.h>
+#define QSIZE 10
 #define BUFSIZE 10000
 
 char* r_220="220 Service ready for new user.\n";
@@ -23,12 +23,14 @@ char* r_200="200 Command okay.\n";
 char* r_500="500 Syntax error, command unrecognized.\n";
 char* r_502="502 Command not implemented.\n";
 char* r_150="150 File status okay; about to open data connection.\n";
-char* r_125="125 Data connection already open; transfer starting.\n";
 char* r_226="226 Closing data connection.\n";
+char* r_550="550 Requested action not taken.File unavailable.\n";
+char* r_425="425 Can't open data connection.\n";
 char *protocol = "tcp";
 char* server_addres="127.0.0.1";
 
 ushort passive_p;
+ushort active_p;
 ushort service_port = 21;
 
 pthread_mutex_t lock,lock2;
@@ -38,7 +40,7 @@ pthread_t main_thread;
 // Przesylanie danych
 //#################################################
 
-void send_file(char* file_name,int arg,char* mode,char current_path[256])
+void send_file(void* control,char* file_name,int arg,char* mode,char current_path[256])
 {
 int bytesReceived;
 char recvBuff[256];
@@ -49,8 +51,11 @@ fp = fopen(file, mode);
 if(NULL == fp)
 {
 printf("Error opening file");
-exit(EXIT_FAILURE);
+write((int) control,r_550,strlen(r_550));
 }
+else
+{
+write((int) control,r_150,strlen(r_150));
 if(strcmp(mode,"rb+")==0)
 {
 
@@ -63,29 +68,32 @@ else
 {
   while(fgets(recvBuff, 256,fp)!=NULL)
     {
-      printf("%s",recvBuff);
         write(arg,recvBuff,strlen(recvBuff));
     }
 }
 close((int)fp);
-
+write((int) control,r_226,strlen(r_226));
+}
 
 
 }
 
-void recive_file(char* file_name,int arg,char* mode,char current_path[256])
+void recive_file(void* control,char* file_name,int arg,char* mode,char current_path[256])
 {
 int bytesReceived;
 char recvBuff[256];
 char file[256];
-sprintf(file,"%s/%s",current_path,file_name);
+if(file_name[0]!='/')sprintf(file,"%s/%s",current_path,file_name);
+else sprintf(file,"%s",file_name);
 FILE *fp;
 fp = fopen(file, mode);
 if(NULL == fp)
 {
 printf("Error opening file");
-exit(EXIT_FAILURE);
+write((int) control,r_550,strlen(r_550));
 }
+else{
+write((int) control,r_150,strlen(r_150));
 if(strcmp(mode,"wb+")==0)
 {
  printf("Binary mode\n");
@@ -101,8 +109,10 @@ else
         fputs(recvBuff,fp);
     }
 }
+write((int) control,r_226,strlen(r_226));
+fflush(fp);
 close((int)fp);
-
+}
 }
 
 
@@ -147,29 +157,10 @@ if(temp[c]=='.')temp[c]=',';
 sprintf(result,"(%s,%d,%d).\n",temp,r1,r2);
 }
 
-int addr(char* addr,char* result)
+ushort active_port()
 {
-int i;
-int port_r;
-int count=0;
-char addres[256];
-char* port;
-char* port2;
-strncpy(addres,addr,strlen(addr));
-for(i=0;i<strlen(addres);i++){
-if(addres[i]==','){count++;}
-if(count<4 && addres[i]==','){addres[i]='.';}
-}
-result=strtok(addres,",");
-port=strtok(NULL,",");
-port2=strtok(NULL,",");
-port_r=num_to_port(atoi(port),atoi(port2));
-return port_r;
-}
-
-static void capture(int signo){
-printf("Signal captured\n");
-exit(EXIT_SUCCESS);
+active_p++;
+return active_p;
 }
 
 ushort passive_port()
@@ -182,33 +173,49 @@ return passive_p;
 //Funkcje serwera
 //#########################################################
 
-void ls(int arg,char current_path[256])
+void ls(void* control,int arg,char current_path[256],char* mode)
 {
 char cmd[256];
 sprintf(cmd,"ls -l %s >> res.txt",current_path);
 system(cmd);
 FILE *fp;
-char wiersz[256];
-fp = fopen("res.txt", "rt");
+char recvBuff[256];
+int bytesReceived;
+fp = fopen("res.txt", mode);
 if(NULL == fp)
 {
 printf("Error opening file");
-exit(EXIT_FAILURE);
+write((int) control,r_550,strlen(r_550));
 }
-while (fgets(wiersz, 256, fp) != NULL)
+else{
+write((int) control,r_150,strlen(r_150));
+if(strcmp(mode,"rb+")==0)
 {
-write(arg,wiersz,strlen(wiersz));
+ while((bytesReceived = fread(recvBuff,1,256,fp))>0)
+    {
+        write(arg,recvBuff,bytesReceived);
+    }
+}
+else
+{
+  while(fgets(recvBuff, 256,fp)!=NULL)
+    {
+        write(arg,recvBuff,strlen(recvBuff));
+    }
 }
 system("rm res.txt");
 fclose(fp);
+write((int)control,r_226,strlen(r_226));
+}
 }
 
 //############################################################
 //Nawiazywanie lacza danych
 //############################################################
 
-void passive_connection(int port,int dd[2])
+void passive_connection(void* control,int port,int dd[2])
 {
+int error=0;
 struct sockaddr_in serv_data,client_data;
 int data_sck,cli_data,cli_len;
 bzero(&serv_data, sizeof serv_data);
@@ -217,57 +224,80 @@ serv_data.sin_family= AF_INET;
 serv_data.sin_port = htons(port);
 if ((data_sck = socket (PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
 perror("Cannot open socket");
-exit(EXIT_FAILURE);
+error=1;
+goto error_passive;
 }
 if (bind(data_sck,(struct sockaddr*)&serv_data, sizeof serv_data) <0){
 printf("Cannot bind socket %d to %d port\n",data_sck,port);
-exit(EXIT_FAILURE);
+error=1;
+goto error_passive;
+
 }
 if (listen (data_sck,QSIZE)<0){
 perror("Cannot listen");
-exit(EXIT_FAILURE);
+error=1;
+goto error_passive;
+
+
 }
 printf("Waiting...\n");
 cli_len = sizeof (struct sockaddr_in);
 if ((cli_data = accept(data_sck,(struct sockaddr*) &client_data, (socklen_t*) &cli_len)) < 0){
 perror("Error while connecting with client");
-exit(EXIT_FAILURE);
+error=1;
+goto error_passive;
+
 }
+error_passive:
+if(error==1){write((int)control,r_425,strlen(r_425));}
+else
+{
 dd[0]=data_sck;
 dd[1]=cli_data;
 printf("Data connection established\n");
 }
+}
 
-void active_connection(char* address,ushort port,int dd[2])
+void active_connection(void* control,char* address,ushort port,int dd[2])
 {
+  int error=0;
   int data_sck;
 struct sockaddr_in serv_data,client_data;
-  int serv_port=passive_port();
+  int serv_port=active_port();
 bzero(&serv_data, sizeof serv_data);
 serv_data.sin_addr.s_addr = INADDR_ANY;
 serv_data.sin_family= AF_INET;
 serv_data.sin_port = htons(serv_port);
 
 bzero(&client_data, sizeof client_data);
-client_data.sin_addr.s_addr = inet_addr("127.0.0.1");
+client_data.sin_addr.s_addr = inet_addr(address);
 client_data.sin_family= AF_INET;
 client_data.sin_port = htons(port);
 
 if ((data_sck = socket (PF_INET,SOCK_STREAM,IPPROTO_TCP))<0){
 perror("Cannot open socket");
-exit(EXIT_FAILURE);
+error=1;
+goto error_active;
 }
 dd[0]=data_sck;
 if (bind(data_sck,(struct sockaddr*)&serv_data, sizeof serv_data) <0){
 printf("Cannot bind socket %d to %d port\n",data_sck,serv_port);
-exit(EXIT_FAILURE);}
+error=1;
+goto error_active;}
 
  if(connect(data_sck, (struct sockaddr *)&client_data, sizeof(client_data))<0)
     {
         printf("\n Error : Connect Failed \n");
-        exit(EXIT_FAILURE);
+        error=1;
+        goto error_active;
     }
+error_active:
+if(error==1){write((int)control,r_425,strlen(r_425));}
+else{
 dd[1]=data_sck;
+write((int) control,r_200,strlen(r_200));
+printf("Connection established\n");
+}
 }
 
 //##################################################
@@ -282,16 +312,18 @@ char* mode_w="wb+";
 char buffer[256]="";
 char* command;
 char* atribut;
+char* save_part;
 int status=0;
 while(status==0)
 {
 memset(buffer,0,256);
 command=NULL;
 atribut=NULL;
+save_part=NULL;
 read((int) arg,buffer,256);
 printf("%s",buffer);
-command=strtok(buffer," ");
-atribut=strtok(NULL," ");
+command=strtok_r(buffer," ",&save_part);
+atribut=strtok_r(NULL," ",&save_part);
 if(atribut==NULL)
 {
 command[strlen(command)-2]='\0';printf("%s",command);
@@ -301,6 +333,11 @@ if(strcmp(command,"USER")==0)
 write((int) arg,r_230,strlen(r_230));printf("%s Response 230\n",command);}
 else if(strcmp(command,"CWD")==0)
 {
+char temp[256];
+sprintf(temp,"%s",current_path);
+char path[256];
+getcwd(path,256);
+sprintf(path,"%s/Files",path);
 atribut[strlen(atribut)-2]='\0';
 if(strcmp(atribut,"..")==0)
 {
@@ -310,14 +347,24 @@ for(i=strlen(current_path);i>=0;i--)
 if(current_path[i]=='/'){current_path[i]='\0';break;}
 }
 }
-else {sprintf(current_path,"%s/%s",current_path,atribut);}
+else {if(atribut[0]!='/')sprintf(current_path,"%s/%s",current_path,atribut);
+else sprintf(current_path,"%s",atribut);
+}
+if(strlen(current_path)<strlen(path))
+  {current_path=temp;
+  write((int) arg,r_550,strlen(r_550));printf("%s Response 550\n",command);printf("%s\n",current_path);}
+else
+{
 write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);}
+}
 
 else if(strcmp(command,"RMD")==0)
 {
 atribut[strlen(atribut)-2]='\0';
 char cmd[256];
-sprintf(cmd,"rm -R %s/%s",current_path,atribut);
+sprintf(cmd,"rmdir %s/%s",current_path,atribut);
+if(atribut[0]!='/')sprintf(cmd,"rmdir %s/%s",current_path,atribut);
+else sprintf(cmd,"rmdir %s",atribut);
 system(cmd);
 write((int)arg,r_250,strlen(r_250));
 printf("%s %s Response 250",command,atribut);
@@ -326,9 +373,7 @@ printf("%s %s Response 250",command,atribut);
 else if(strcmp(command,"STOR")==0)
 {
 atribut[strlen(atribut)-2]='\0';
-write((int) arg,r_150,strlen(r_150));
-recive_file(atribut,desc[1],mode_w,current_path);
-write((int) arg,r_226,strlen(r_226));
+recive_file(arg,atribut,desc[1],mode_w,current_path);
 close(desc[1]);
 close(desc[0]);
 printf("%s Response 226\n",command);
@@ -337,19 +382,18 @@ else if(strcmp(command,"RETR")==0)
 {
 pthread_mutex_lock(&lock2);
 atribut[strlen(atribut)-2]='\0';
-write((int) arg,r_150,strlen(r_150));
-send_file(atribut,desc[1],mode,current_path);
-write((int) arg,r_226,strlen(r_226));
+send_file(arg,atribut,desc[1],mode,current_path);
 close(desc[1]);
 close(desc[0]);
 printf("%s Response 226\n",command);
 pthread_mutex_unlock(&lock2);
-}x
+}
 else if(strcmp(command,"MKD")==0)
 {
 atribut[strlen(atribut)-2]='\0';
 char cmd[50];
-sprintf(cmd,"mkdir %s/%s",current_path,atribut);
+if(atribut[0]!='/')sprintf(cmd,"mkdir %s/%s",current_path,atribut);
+else sprintf(cmd,"mkdir %s",atribut);
 char r_257[256];
 system(cmd);
 sprintf(r_257,"257 %s/%s created.\n",current_path,atribut);
@@ -358,9 +402,26 @@ printf("%s %s Response 257\n",command,atribut);}
 
 else if(strcmp(command,"PORT")==0)
 {
-char* address="";
-int port=0;
-atribut[strlen(atribut)-2]='\0';port=addr(atribut,address);active_connection("127.0.0.1",port,desc);write((int) arg,r_200,strlen(r_200));printf("%s Response 200\n",command);}
+char* address;
+atribut[strlen(atribut)-2]='\0';
+int i;
+int port_r;
+int count=0;
+char addres[256];
+char* port;
+char* port2;
+strncpy(addres,atribut,strlen(atribut));
+for(i=0;i<strlen(addres);i++)
+{
+if(addres[i]==','){count++;}
+if(count<4 && addres[i]==','){addres[i]='.';}
+}
+char* save_part;
+address=strtok_r(addres,",",&save_part);
+port=strtok_r(NULL,",",&save_part);
+port2=strtok_r(NULL,",",&save_part);
+port_r=num_to_port(atoi(port),atoi(port2));
+active_connection(arg,address,port_r,desc);printf("%s Response 200\n",command);}
 
 else if(strcmp(command,"SYST")==0)
 {
@@ -379,7 +440,8 @@ char ad[256];
 port_to_num(server_addres,port,ad);
 char r_227[256];
 sprintf(r_227,"227 Entering Passive Mode %s",ad);
-write((int) arg,r_227,strlen(r_227));printf(" Respons 227\n");passive_connection(port,desc);}
+write((int) arg,r_227,strlen(r_227));printf(" Respons 227\n");
+passive_connection(arg,port,desc);}
 
 else if(strcmp(command,"QUIT")==0)
 {
@@ -388,8 +450,8 @@ status=1;printf(" Respons quit\n");}
 else if(strcmp(command,"LIST")==0)
 {
 pthread_mutex_lock(&lock);
-write((int) arg,r_150,strlen(r_150));printf(" Respons 150\n");ls(desc[1],current_path);
-write((int)arg,r_226,strlen(r_226));close(desc[0]);close(desc[1]);
+printf(" Respons 150\n");ls(arg,desc[1],current_path,mode);
+close(desc[0]);close(desc[1]);
 pthread_mutex_unlock(&lock);
 }
 
@@ -408,7 +470,7 @@ else {write((int) arg,r_500,strlen(r_500));printf(" Response 500\n");}
 // Tworzenie watkow i przyjmowanie polaczen
 //#########################################
 
-void* function(void* arg)
+void* control_connection(void* arg)
 {
 printf("Connection established..\n");
 write((int) arg,r_220,strlen(r_220));
@@ -444,27 +506,24 @@ while(1){
 rcv_len = sizeof (struct sockaddr_in);
 if ((rcv_sck = accept(sck,(struct sockaddr*) &client_addr, (socklen_t*) &rcv_len)) < 0){
 perror("Error while connecting with client");
-exit(EXIT_FAILURE);
 }
-if(pthread_create (&main_thread,NULL,function,(void*) rcv_sck) !=0){
+else
+{
+if(pthread_create (&main_thread,NULL,control_connection,(void*) rcv_sck) !=0){
 printf("Thread creation error\n");
 exit(EXIT_FAILURE);
+}
 }
 }
 close(sck);
 }
 int main(int argc,char *argv[])
 {
+system("mkdir Files");
 passive_p=1045;
-if (pthread_mutex_init(&lock, NULL) != 0)
-    {
-        printf("\n mutex init failed\n");
-    }
-if (pthread_mutex_init(&lock2, NULL) != 0)
-    {
-        printf("\n mutex init failed\n");
-    }
-signal(SIGINT,capture);
+active_p=2024;
+pthread_mutex_init(&lock, NULL);
+pthread_mutex_init(&lock2, NULL);
 if(pthread_create (&main_thread,NULL,main_loop,NULL) !=0){
 printf("Thread creation error\n");
 exit(EXIT_FAILURE);
