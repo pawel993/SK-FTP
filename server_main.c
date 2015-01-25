@@ -53,7 +53,7 @@ void ls(void* control,int arg,char current_path[],char* mode)
       }
   }
   (void)fclose(fp);
-  (void)system("rm res.txt");
+ // (void)system("rm res.txt");
   (void)write((int)control,r_226,strlen(r_226));
   }
 }
@@ -394,14 +394,14 @@ void respond(void* arg,char current_path[])
 
 void* control_connection(void* arg)
 {
-  char current_path[256];
-  
+  char current_path[255];
+  char new_path[256];
   printf("Connection established..\n");
   (void)write((int) arg,r_220,strlen(r_220));
-  (void)getcwd(current_path,256);
-  
-  (void)snprintf(current_path, 255,"%s/Files",current_path);
-  respond(arg,current_path);
+  (void)getcwd(current_path,100);
+  (void)snprintf(new_path,256,"%s/Files",current_path);
+  printf("%s",new_path);
+  respond(arg,new_path);
   
   close((int) arg);
   return 0;
