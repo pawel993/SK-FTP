@@ -1,8 +1,16 @@
 #include "helper_functions.h"
+#include <stdio.h>
+#include <string.h>
 /*
  * HELPER_FUNCTIONS
  * FUNKCJE POMOCNICZE
  */
+
+//ostatni wykorzystany numer portu połączenia pasywnego
+static ushort passive_p;
+
+//ostatni wykorzystany numer portu połączenia aktywnego
+static ushort active_p;
 
 /*
  * a^b
@@ -19,6 +27,37 @@ static int power(int a, int b)
 }
 
 /*
+ * zwraca kolejny numer portu dla połączenia aktywnego
+ * 
+ */
+ushort active_port()
+{
+  active_p++;
+  return active_p;
+}
+
+/*
+ * zwraca kolejny numer portu dla połączenia pasywnego
+ * 
+ */
+ushort passive_port()
+{
+    passive_p++;
+    return passive_p;
+}
+
+/*
+ * funkcja inicjalizująca początkowe numery portów
+ * dla połaczenia aktywnego i pasywnego
+ */
+void initialize_ports(ushort passiv, ushort activ)
+{
+  passive_p=passiv;
+  active_p=activ;
+}
+
+/*
+ * konwersja wartości z komunikatu klienta na numer portu
  * 
  */
 int num_to_port(int a, int b)
@@ -39,6 +78,7 @@ int num_to_port(int a, int b)
 }
 
 /*
+ * konwersja numeru portu na format przesyłany klientowi
  * 
  */
 void port_to_num(char* server_addres,int a,char result[])
