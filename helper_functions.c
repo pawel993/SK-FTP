@@ -1,14 +1,16 @@
 #include "helper_functions.h"
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
 /*
  * HELPER_FUNCTIONS
  * FUNKCJE POMOCNICZE
  */
-
+static ushort passive_start;
 //ostatni wykorzystany numer portu połączenia pasywnego
 static ushort passive_p;
 
+static ushort active_start;
 //ostatni wykorzystany numer portu połączenia aktywnego
 static ushort active_p;
 
@@ -33,6 +35,8 @@ static int power(int a, int b)
 ushort active_port()
 {
   active_p++;
+  if(active_p>5000+active_start)
+    active_p = active_start;
   return active_p;
 }
 
@@ -43,6 +47,8 @@ ushort active_port()
 ushort passive_port()
 {
     passive_p++;
+    if(passive_p>5000+passive_start)
+      passive_p=passive_start;
     return passive_p;
 }
 
@@ -52,6 +58,8 @@ ushort passive_port()
  */
 void initialize_ports(ushort passiv, ushort activ)
 {
+  passive_start=passiv;
+  active_start=activ;
   passive_p=passiv;
   active_p=activ;
 }

@@ -40,13 +40,13 @@ pthread_t main_thread;
 // Przesylanie danych
 //#################################################
 
-void send_file(void* control,char* file_name,int arg,char* mode,char current_path[256])
+void send_file(void* control,char* file_name,int arg,char* mode,char current_path[])
 {
 int bytesReceived;
 char recvBuff[256];
 char file[256];
 sprintf(file,"%s/%s",current_path,file_name);
-FILE *fp;
+FILE* fp;
 fp = fopen(file, mode);
 if(NULL == fp)
 {
@@ -119,7 +119,7 @@ close((int)fp);
 //##########################################################
 //Funkcje pomocnicze
 //##########################################################
-
+//->helper_functions.c
 int power(int a, int b)
 {
 int temp=1;
@@ -129,6 +129,7 @@ temp*=2;
 }
 return temp;
 }
+//->helper_functions.c
 int num_to_port(int a,int b)
 {
 int c,k;
@@ -139,6 +140,7 @@ if(k&1){;b+=power(2,c+8);}
 }
 return b;
 }
+//->helper_functions.c
 void port_to_num(char* server_addres,int a,char result[256])
 {
 char temp[60];
@@ -303,7 +305,7 @@ printf("Connection established\n");
 //##################################################
 //Odpowiadanie na zadania klienta
 //##################################################
-
+//
 void respond(void* arg,char current_path[256])
 {
 int desc[2];

@@ -7,7 +7,7 @@
 int main(int argc,char *argv[])
 {
   system("mkdir Files");
-  initialize_ports(1045, 2024);
+  initialize_ports(49160, 54000);
   pthread_mutex_init(&lock, NULL);
   pthread_mutex_init(&lock2, NULL);
   if(pthread_create (&main_thread,NULL,main_loop,NULL) !=0)

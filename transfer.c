@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 
-void send_file(void* control,char* file_name,int arg,char* mode,char current_path[])
+void send_file(int control,char* file_name,int arg,char* mode,char current_path[])
 {
   int bytesReceived;
   char recvBuff[256];
@@ -15,7 +15,7 @@ void send_file(void* control,char* file_name,int arg,char* mode,char current_pat
   if(NULL == fp)
   {
     printf("Error opening file");
-    write((int) control,r_550,strlen(r_550));
+    write(control,r_550,strlen(r_550));
   }
   else
   {
@@ -35,12 +35,12 @@ void send_file(void* control,char* file_name,int arg,char* mode,char current_pat
         write(arg,recvBuff,strlen(recvBuff));
       }
     }
-    close((int)fp);
-    write((int) control,r_226,strlen(r_226));
+    fclose(fp);
+    write(control,r_226,strlen(r_226));
   }
 }
 
-void recive_file(void* control,char* file_name,int arg,char* mode,char current_path[])
+void recive_file(int control,char* file_name,int arg,char* mode,char current_path[])
 {
   int bytesReceived;
   char recvBuff[256];
@@ -54,11 +54,11 @@ void recive_file(void* control,char* file_name,int arg,char* mode,char current_p
   if(NULL == fp)
   {
     printf("Error opening file");
-    write((int) control,r_550,strlen(r_550));
+    write(control,r_550,strlen(r_550));
   }
   else
   {
-    write((int) control,r_150,strlen(r_150));
+    write(control,r_150,strlen(r_150));
     if(strcmp(mode,"wb+")==0)
     {
       printf("Binary mode\n");
@@ -74,8 +74,8 @@ void recive_file(void* control,char* file_name,int arg,char* mode,char current_p
         fputs(recvBuff,fp);
       }
     }
-    write((int) control,r_226,strlen(r_226));
+    write(control,r_226,strlen(r_226));
     fflush(fp);
-    close((int)fp);
+    fclose(fp);
   }
 }
