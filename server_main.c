@@ -515,7 +515,6 @@ void respond(int arg,char current_path[])
 
 void* control_connection(void* arg)
 {
-<<<<<<< HEAD
   char current_path[256];
   char temp[256];
   int sck = *(int*) arg;
