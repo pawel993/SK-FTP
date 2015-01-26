@@ -402,6 +402,7 @@ void respond(int arg,char current_path[])
 
 void* control_connection(void* arg)
 {
+<<<<<<< HEAD
   char current_path[256];
   char temp[256];
   int sck = *(int*) arg;
@@ -417,7 +418,6 @@ void* control_connection(void* arg)
   pthread_mutex_lock(&lock3);
   running_connections--;
   pthread_mutex_unlock(&lock3);
-  
   pthread_detach(pthread_self());
   return 0;
 }
