@@ -95,7 +95,7 @@ int num_to_port(int a, int b)
  * konwersja numeru portu na format przesyłany klientowi
  * 
  */
-void port_to_num(char* server_addres,int a,char result[])
+void port_to_num(char* server_addres,int a,/*@out@*/char result[])
 {
   unsigned int u_a = (unsigned int) a;
   char temp[60];
