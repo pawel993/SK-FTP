@@ -14,13 +14,21 @@
 #include <math.h>
 #define QSIZE 10
 
-static ushort service_port = 21;
-char server_addres[50];
+static ushort service_port = 21;//port połaczenia kontrolnego
+char server_addres[50];//adres serwera
 pthread_t main_thread;
 pthread_mutex_t lock,lock2, lock3;
 
+//liczba aktywnych połączeń
 int running_connections=0;
 
+/*
+ * realizacja komendy ls
+ * control - identyfikator połączenia kontrolnego
+ * arg - identyfikator połączenia danych
+ * current_path -  aktualna ścieżka
+ * mode - aktualny tryb dostępu do pliku
+ */
 void ls(int control,int arg,char current_path[],char* mode)
 {
   char cmd[256];
@@ -28,9 +36,11 @@ void ls(int control,int arg,char current_path[],char* mode)
   char recvBuff[256];
   int bytesReceived;
   
+  //wywołanie komendy ls i zapisanie wyniku do pliku pomocniczego
   (void)snprintf(cmd, 255,"ls -l %s >> res.txt",current_path);
   (void)system(cmd);
   
+  //próba otworzenia pliku
   fp = fopen("res.txt", mode);
   if(NULL == fp)
   {
@@ -39,6 +49,7 @@ void ls(int control,int arg,char current_path[],char* mode)
   }
   else
   {
+    //przesłanie łączem danych wyniku polecenia ls
     (void)write(control,r_150,strlen(r_150));
     if(strcmp(mode,"rb+")==0)
     {
@@ -54,12 +65,19 @@ void ls(int control,int arg,char current_path[],char* mode)
         (void)write(arg,recvBuff,strlen(recvBuff));
       }
     }
+  //zamknięcie i usunięcie pliku
   (void)fclose(fp);
   (void)system("rm res.txt");
   (void)write(control,r_226,strlen(r_226));
   }
 }
 
+/*
+ * Nawiązanie pasywne połączenia z klientem
+ * control - identyfikator łącza kontrolnego
+ * port - numer portu
+ * dd - tablica, wktórą wpisane zostają numery portów
+ */
 void passive_connection(int control,int port,int dd[])
 {
   int error=0;
@@ -69,18 +87,24 @@ void passive_connection(int control,int port,int dd[])
   serv_data.sin_addr.s_addr = INADDR_ANY;
   serv_data.sin_family= AF_INET;
   serv_data.sin_port = htons((uint16_t)port);
+  
+  //próba otworzenia socketu
   if ((data_sck = socket (PF_INET,SOCK_STREAM,IPPROTO_TCP))<0)
   {
     perror("Cannot open socket");
     error=1;
     goto error_passive;
   }
+  
+  //próba "zbindowania"(sic?!)
   if (bind(data_sck,(struct sockaddr*)&serv_data, (socklen_t)sizeof serv_data) <0)
   {
     printf("Cannot bind socket %d to %d port\n",data_sck,port);
     error=1;
     goto error_passive;
   }
+  
+  //próba nasłuchu
   if (listen (data_sck,QSIZE)<0){
     perror("Cannot listen");
     error=1;
@@ -89,12 +113,16 @@ void passive_connection(int control,int port,int dd[])
   
   printf("Waiting...\n");
   cli_len = (int)sizeof (struct sockaddr_in);
+  
+  //próba nawiązania połączenia z klientem
   if ((cli_data = accept(data_sck,(struct sockaddr*) &client_data, (socklen_t*) &cli_len)) < 0)
   {
     perror("Error while connecting with client");
     error=1;
     goto error_passive;
   }
+  
+  //obsługa błędu nazwiązania połączenia
     error_passive:
   if(error==1)
   {
@@ -108,12 +136,22 @@ void passive_connection(int control,int port,int dd[])
   }
 }
 
+/*
+ * Nawiązanie aktywne połączenia z klientem
+ * control - identyfikator łącza kontrolnego
+ * address - adres serwera
+ * port - numer portu
+ * dd - tablica, w którą wpisane zostają numery portów
+ * 
+ */
 void active_connection(int control,char* address,ushort port,int dd[])
 {
   int error=0;
   int data_sck;
+  
   struct sockaddr_in serv_data,client_data;
   int serv_port=active_port();
+  
   bzero(&serv_data, sizeof serv_data);
   serv_data.sin_addr.s_addr = INADDR_ANY;
   serv_data.sin_family= AF_INET;
@@ -124,6 +162,7 @@ void active_connection(int control,char* address,ushort port,int dd[])
   client_data.sin_family= AF_INET;
   client_data.sin_port = htons(port);
 
+  //próba otworzenia socketu
   if ((data_sck = socket (PF_INET,SOCK_STREAM,IPPROTO_TCP))<0)
   {
     perror("Cannot open socket");
@@ -131,19 +170,23 @@ void active_connection(int control,char* address,ushort port,int dd[])
     goto error_active;
   }
   dd[0]=data_sck;
+  
   if (bind(data_sck,(struct sockaddr*)&serv_data, sizeof serv_data) <0)
   {
     printf("Cannot bind socket %d to %d port\n",data_sck,serv_port);
     error=1;
     goto error_active;
   }
-
+  
+  //próba nazwiązania połaczenia
   if(connect(data_sck, (struct sockaddr *)&client_data, sizeof(client_data))<0)
   {
     printf("\n Error : Connect Failed \n");
     error=1;
     goto error_active;
   }
+  
+  //obsługa błedów nawiązywania połaczenia
     error_active:
   if(error==1)
   {
@@ -151,23 +194,37 @@ void active_connection(int control,char* address,ushort port,int dd[])
   }
   else
   {
+    //komunikat o nawiązaniu połączenia
     dd[1]=data_sck;
     (void)write(control,r_200,strlen(r_200));
     printf("Connection established\n");
   }
 }
 
+
+/*
+ * Wykonianie komendy CWD
+ * arg - numer łącza kontrolnego
+ * atribut - atrybut
+ * current_path - aktualna ścieżka
+ * command - komenda otrzymana od klienta
+ */
 void commandCWD(int arg, char atribut[], char current_path[], char command[])
 {
   char temp[256];
   char path[256];
   char temp2[256];
+  
+  //wyganerowanie aktualnych ścieżek i wpisanie aktualnej ścieżki danego klienta
   (void)snprintf(temp, 255, "%s", current_path);
   getcwd(temp2, 256);
   (void)snprintf(path, 255, "%s/Files", temp2);
   atribut[strlen(atribut)-2]='\0';
+  
+  //sprawdzenie, czy nie jest to komenda wycofania do nadrzędnego katalogu
   if(strcmp(atribut,"..")==0)
   {
+    //skrócenie aktualnej ścieżki o ostatni folder
     int i;
     for(i=strlen(current_path);i>=0;i--)
     {
@@ -180,16 +237,23 @@ void commandCWD(int arg, char atribut[], char current_path[], char command[])
   }
   else 
   {
+    //jeżeli to komenda przejścia do podrzędnego katalogu
+    //
+    
    if(atribut[0]!='/')
    {
+     //jeżeli scieżka ma format względny
      char copy[256];
      (void)snprintf(copy, 255, "%s", current_path);
      (void)snprintf(current_path, 255,"%s/%s",copy,atribut);
    }
+   //jeżeli ścieżka absolutna
    else 
      (void)snprintf(current_path, 255, "%s",atribut);
   }
    
+  //test, czy klient nie próbuje wyjść poza dostępną przestrzeń katalogów
+  //do katalogu nadrzędnego względem Files w aktualnym katalogu roboczym sewera
   if(strlen(current_path)<strlen(path))
   {
     (void)snprintf(current_path, 255,"%s",temp);
@@ -204,35 +268,66 @@ void commandCWD(int arg, char atribut[], char current_path[], char command[])
   }
 }
 
+/*
+ * Wykonanie komendy RMD
+ * arg - identyfikator łącza kontrolnego
+ * atribut - atrybut komendy
+ * current_path - aktualny katalog roboczy połaczenia
+ * command - komenda klienta
+ */
 void commandRMD(int arg, char atribut[], char current_path[], char command[])
 {
   char cmd[256];
   atribut[strlen(atribut)-2]='\0';
+  
+  //przygotowanie komendy (ścieżka relatywna/absolutna)
   (void)snprintf(cmd, 255,"rmdir %s/%s",current_path,atribut);
   if(atribut[0]!='/')
     (void)snprintf(cmd, 255,"rmdir %s/%s",current_path,atribut);
   else 
     (void)snprintf(cmd, 255,"rmdir %s",atribut);
-    system(cmd);
-    write(arg,r_250,strlen(r_250));
-    printf("%s %s Response 250",command,atribut);
+  
+  //wykonanie komendy
+  system(cmd);
+  (void)write(arg,r_250,strlen(r_250));
+  printf("%s %s Response 250",command,atribut);
 }
 
+/*
+ * Wykonanie komendy MKD
+ * arg - numer łącza kontrolnego
+ * atribut - atrybut
+ * current_path - aktualna ścieżka
+ * command - komenda otrzymana od klienta
+ */
 void commandMKD(int arg, char atribut[], char current_path[], char command[])
 {
   char cmd[256];
   char r_257[256];
   atribut[strlen(atribut)-2]='\0';
+  
+  //przygotowanie komendy w zależności od typu ścieżki
   if(atribut[0]!='/')
     (void)snprintf(cmd, 255,"mkdir %s/%s",current_path,atribut);
   else 
     (void)snprintf(cmd, 255,"mkdir %s",atribut);
   system(cmd);
+  
+  //komenda o powodzeniu
   (void)snprintf(r_257, 255,"257 %s/%s created.\n",current_path,atribut);
   write(arg,r_257,strlen(r_257));
   printf("%s %s Response 257\n",command,atribut);
 }
 
+/*
+ * Wykonanie komendy PORT
+ * 
+ * arg - numer łącza kontrolnego
+ * atribut - atrybut
+ * current_path - aktualna ścieżka
+ * command - komenda otrzymana od klienta
+ * desc - tablica wyjściowa z numerami portów
+ */
 void commandPORT(int arg, char atribut[], char current_path[], char command[], int desc[])
 {
   char* address;
@@ -243,8 +338,10 @@ void commandPORT(int arg, char atribut[], char current_path[], char command[], i
   char* port;
   char* port2;
   char* save_part;
+  
   atribut[strlen(atribut)-2]='\0';
   strncpy(addres,atribut,strlen(atribut));
+  //zmiena formatu zapisu adresu
   for(i=0;i<strlen(addres);i++)
   {
     if(addres[i]==',')
@@ -253,14 +350,23 @@ void commandPORT(int arg, char atribut[], char current_path[], char command[], i
       addres[i]='.';
    }
    
+   //podział adresu na części składowe
    address=strtok_r(addres,",",&save_part);
    port=strtok_r(NULL,",",&save_part);
    port2=strtok_r(NULL,",",&save_part);
    port_r=num_to_port(atoi(port),atoi(port2));
+   
+   //aktywne nawiązanie połaczenia
    active_connection(arg,address,port_r,desc);
    printf("%s Response 200\n",command);
 }
 
+
+/*
+ * Analiza komend i ich wykonywanie
+ * arg - identyfikator połączenia kontrolnego
+ * current_path - aktualna ścieżka
+ */
 void respond(int arg,char current_path[])
 {
   int desc[2];
@@ -271,14 +377,20 @@ void respond(int arg,char current_path[])
   char* atribut;
   char* save_part;
   int status=0;
+  
+  //pętla wykonywana aż do otrzymania komendy QUIT (zmiana status na 1)
   while(status==0)  
   {
     memset(buffer,0,256);
     command=NULL;
     atribut=NULL;
     save_part=NULL;
+    
+    //pobranie komendy
     read(arg,buffer,256);
     printf("%s",buffer);
+    
+    //rozłożenie komendy na składniki
     command=strtok_r(buffer," ",&save_part);
     atribut=strtok_r(NULL," ",&save_part);
     if(atribut==NULL)
@@ -287,6 +399,7 @@ void respond(int arg,char current_path[])
       printf("%s",command);
     }
     
+    //sprawdzenie typu komendy i wykoanie odpowiedniej akcji
     if(strcmp(command,"USER")==0)
     {
       write(arg,r_230,strlen(r_230));

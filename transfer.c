@@ -4,78 +4,109 @@
 #include <string.h>
 #include <unistd.h>
 
+
+/*
+ * Funkcja wysyłająca plik do klienta
+ * control - identyfikator połączenia kontrolnego
+ * file_name - nazwa przesyłanego pliku
+ * arg - identyfikator połączenia danych
+ * current_path - aktualny katalog roboczy
+ */
 void send_file(int control,char* file_name,int arg,char* mode,char current_path[])
 {
   int bytesReceived;
   char recvBuff[256];
   char file[256];
-  sprintf(file,"%s/%s",current_path,file_name);
   FILE* fp;
+  
+  //połączenie ścieżki z nazwą 
+  (void)snprintf(file,255,"%s/%s",current_path,file_name);
+  
+  //próba otworzenia żądanego pliku
   fp = fopen(file, mode);
   if(NULL == fp)
   {
+    //komunikat w przypadku niepowodzenia
     printf("Error opening file");
-    write(control,r_550,strlen(r_550));
+    (void)write(control,r_550,strlen(r_550));
   }
   else
   {
-    write((int) control,r_150,strlen(r_150));
+    //komunkat o powodzeniu
+    (void)write(control,r_150,strlen(r_150));
     if(strcmp(mode,"rb+")==0)
     {
-
-      while((bytesReceived = fread(recvBuff,1,256,fp))>0)
+      //jeżeli plik jest otwierany w trybie binarnym
+      while((bytesReceived = (int)fread(recvBuff,1,256,fp))>0)
       {
-        write(arg,recvBuff,bytesReceived);
+        (void)write(arg,recvBuff,(size_t)bytesReceived);
       }
     }
     else
     {
+      //jeżli plik jest otwierany w trybie ascii
       while(fgets(recvBuff, 256,fp)!=NULL)
       {
-        write(arg,recvBuff,strlen(recvBuff));
+        (void)write(arg,recvBuff,strlen(recvBuff));
       }
     }
-    fclose(fp);
-    write(control,r_226,strlen(r_226));
+    
+    //zamknięcie pliki i komunikat o zakończeniu transferu
+    (void)fclose(fp);
+    (void)write(control,r_226,strlen(r_226));
   }
 }
 
+/*
+ * Funkcja odbierająca plik od klienta
+ * control - identyfikator połączenia kontrolnego
+ * file_name - nazwa przesyłanego pliku
+ * arg - identyfikator połączenia danych
+ * current_path - aktualny katalog roboczy
+ */
 void recive_file(int control,char* file_name,int arg,char* mode,char current_path[])
 {
   int bytesReceived;
   char recvBuff[256];
   char file[256];
-  if(file_name[0]!='/')
-    sprintf(file,"%s/%s",current_path,file_name);
-  else 
-    sprintf(file,"%s",file_name);
   FILE *fp;
+  
+  //sprawdzenie, czy nazwa pliku zawiera pełną ścieżkę
+  if(file_name[0]!='/')
+    (void)snprintf(file, 255,"%s/%s",current_path,file_name);
+  else 
+    (void)snprintf(file, 255,"%s",file_name);
+  
+  
+  //próba otworzenia pliku
   fp = fopen(file, mode);
   if(NULL == fp)
   {
     printf("Error opening file");
-    write(control,r_550,strlen(r_550));
+    (void)write(control,r_550,strlen(r_550));
   }
   else
   {
-    write(control,r_150,strlen(r_150));
+    (void)write(control,r_150,strlen(r_150));
     if(strcmp(mode,"wb+")==0)
     {
-      printf("Binary mode\n");
-      while((bytesReceived = read(arg, recvBuff, 256)) > 0)
+      //zapisywanie pliku w trybie binarnym
+      while((bytesReceived = (int)read(arg, recvBuff, 256)) > 0)
       {
-        fwrite(recvBuff,1,bytesReceived,fp);
+        (void)fwrite(recvBuff,1,(size_t)bytesReceived,fp);
       }
     }
     else
     {
-      while((bytesReceived = read(arg, recvBuff, 256)) > 0)
+      //zapisywanie pliku w trybie ascii
+      while((bytesReceived = (int)read(arg, recvBuff, 256)) > 0)
       {
-        fputs(recvBuff,fp);
+        (void)fputs(recvBuff,fp);
       }
     }
-    write(control,r_226,strlen(r_226));
-    fflush(fp);
-    fclose(fp);
+    //wysłanie komunikatu o zakończeniu transferu i zamknięcie pliku
+    (void)write(control,r_226,strlen(r_226));
+    (void)fflush(fp);
+    (void)fclose(fp);
   }
 }

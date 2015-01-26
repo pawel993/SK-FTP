@@ -1,5 +1,10 @@
 #include "responds.h"
 
+/*
+ * RESPONDS
+ * ODPOWIEDZI SERWERA
+ * 
+ */
 char* r_220="220 Service ready for new user.\n";
 char* r_215="215 Unix system type.\n";
 char* r_250="250 Requested file action okay, completed.\r\n";

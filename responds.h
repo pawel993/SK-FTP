@@ -1,6 +1,11 @@
 #ifndef _RESPONDS_H
 #define _RESPONDS_H
 
+/*
+ * RESPONDS
+ * ŁAŃCUCHY ZAWIERACJĄCE STANDARDOWE ODPOWIEDZI SERWERA
+ */
+
 extern char* r_220;
 extern char* r_215;
 extern char* r_250;

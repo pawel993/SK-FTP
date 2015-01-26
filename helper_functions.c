@@ -6,10 +6,13 @@
  * HELPER_FUNCTIONS
  * FUNKCJE POMOCNICZE
  */
+
+//początkowy numer portu połączeń pasywnych
 static ushort passive_start;
 //ostatni wykorzystany numer portu połączenia pasywnego
 static ushort passive_p;
 
+//początkowy numer portu połączeń aktywnych
 static ushort active_start;
 //ostatni wykorzystany numer portu połączenia aktywnego
 static ushort active_p;
@@ -22,6 +25,7 @@ static int power(int a, int b)
 {
   int temp=1;
   int i;
+  
   for(i=0;i<b;i++){
     temp*=a;
     }
@@ -74,6 +78,8 @@ int num_to_port(int a, int b)
   unsigned int u_b = (unsigned int) b;
   int c;
   unsigned int k;
+  
+  //przeliczenie na numer portu
   for(c=8;c>=0;c--)
   {
     k = u_a>>(unsigned int)c;
